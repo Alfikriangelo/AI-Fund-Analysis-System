@@ -19,7 +19,7 @@ class Fund(Base):
     vintage_year = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
+    # Relationships - sesuaikan dengan model dari transaction.py
     capital_calls = relationship("CapitalCall", back_populates="fund")
     distributions = relationship("Distribution", back_populates="fund")
     adjustments = relationship("Adjustment", back_populates="fund")

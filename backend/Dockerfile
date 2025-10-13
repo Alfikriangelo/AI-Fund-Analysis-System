@@ -7,14 +7,15 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    curl \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Copy requirements
+# Copy requirements (gunakan yang ringan dulu)
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies dengan timeout tinggi dan retry
+RUN pip install --no-cache-dir -r requirements.txt --timeout 600 --retries 3
 
 # Copy application code
 COPY . .
