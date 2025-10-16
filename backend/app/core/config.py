@@ -1,3 +1,4 @@
+# backend/app/core/config.py
 """
 Application configuration
 """
@@ -28,15 +29,15 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # OpenAI (Opsional, bisa dihapus jika tidak digunakan)
-    # OPENAI_API_KEY: str = ""
-    # OPENAI_MODEL: str = "gpt-4-turbo-preview"
-    # OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-
     # Google Generative AI (Gemini)
-    GOOGLE_API_KEY: Optional[str] = None # <-- TAMBAHKAN INI
-    GEMINI_MODEL: str = "gemini-pro" # <-- BISA DITAMBAHKAN UNTUK FLEKSIBILITAS
-    GEMINI_EMBEDDING_MODEL: str = "embedding-001" # <-- SESUAIKAN JIKA ADA MODEL EMBEDDING KHUSUS
+    GOOGLE_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-flash-latest"
+    GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
+
+    # --- TAMBAHKAN BARIS INI ---
+    USE_LOCAL_EMBEDDINGS: bool = False  # <-- Set ke False untuk gunakan Google
+    # LOCAL_EMBEDDING_MODEL: str = "BAAI/bge-large-en-v1.5" # <-- Tidak digunakan jika USE_LOCAL_EMBEDDINGS=False
+    # --------------------------
 
     # Anthropic (optional)
     ANTHROPIC_API_KEY: str = ""

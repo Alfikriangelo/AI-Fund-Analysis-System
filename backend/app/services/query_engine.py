@@ -30,7 +30,8 @@ class QueryEngine:
             return ChatGoogleGenerativeAI( # <-- GANTI INISIALISASI
                 model=settings.GEMINI_MODEL, # <-- GANTI NAMA MODEL
                 temperature=0,
-                google_api_key=settings.GOOGLE_API_KEY # <-- GANTI NAMA API KEY
+                google_api_key=settings.GOOGLE_API_KEY, # <-- GANTI NAMA API KEY
+                convert_system_message_to_human=True
             )
         elif settings.OPENAI_API_KEY: # <-- KONDISI CADANGAN (OPSIONAL)
             # Fallback ke OpenAI jika Google API key tidak ada
@@ -150,47 +151,74 @@ class QueryEngine:
     ) -> str:
         """Generate response using LLM"""
 
-        # Build context string
+        # Helper function to escape curly braces
+        def escape_curly_braces(text: str) -> str:
+            return text.replace("{", "{{").replace("}", "}}")
+
+        # Build context string and escape curly braces
         context_str = "\n\n".join([
-            f"[Source {i+1}]\n{doc['content']}"
+            f"[Source {i+1}]\n{escape_curly_braces(doc['content'])}"
             for i, doc in enumerate(context[:3])  # Use top 3 sources
         ])
 
-        # Build metrics string
         metrics_str = ""
         if metrics:
             metrics_str = "\n\nAvailable Metrics:\n"
             for key, value in metrics.items():
                 if value is not None:
-                    metrics_str += f"- {key.upper()}: {value}\n"
+                    safe_value = escape_curly_braces(str(value))
+                    metrics_str += f"- {key.upper()}: {safe_value}\n"
 
-        # Build conversation history string
         history_str = ""
         if conversation_history:
             history_str = "\n\nPrevious Conversation:\n"
-            for msg in conversation_history[-3:]:  # Last 3 messages
-                history_str += f"{msg['role']}: {msg['content']}\n"
+            for msg in conversation_history[-3:]:
+                safe_content = escape_curly_braces(msg['content'])
+                history_str += f"{msg['role']}: {safe_content}\n"
 
-        # Create prompt
+        # --- PROMPT SISTEM YANG DIPERBAIKI SESUAI CALCULATIONS.md ---
+        # Siapkan nilai-nilai dari metrics untuk dimasukkan ke prompt
+        total_distributions_val = metrics.get("total_distributions", 0) if metrics else 0
+        pic_val = metrics.get("pic", 0) if metrics else 0
+        dpi_val = metrics.get("dpi", 0) if metrics else 0
+
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a financial analyst assistant specializing in private equity fund performance.
+            ("system", f"""You are a financial analyst assistant specializing in private equity fund performance.
 
 Your role:
-- Answer questions about fund performance using provided context
-- Calculate metrics like DPI, IRR when asked
+- Answer questions about fund performance using provided context and pre-calculated metrics
 - Explain complex financial terms in simple language
 - Always cite your sources from the provided documents
 
-When calculating:
-- Use the provided metrics data
-- Show your work step-by-step
-- Explain any assumptions made
+When citing sources:
+- **IMPORTANT: Do NOT use labels like [Source 1], [Source 2], etc. in your final response.**
+- If you need to reference information from the documents, you can say things like "Based on the fund's performance report..." or "According to the transaction data...".
+- If the user asks for specific details from the document, you can refer to the general context provided.
 
-Format your responses:
-- Be concise but thorough
+When calculating or explaining metrics:
+- **CRITICAL: Use ONLY the pre-calculated metrics provided by the system:**
+  - Total Distributions (Gross): {total_distributions_val}
+  - Paid-In Capital (PIC) (Net): {pic_val} (Calculated as Total Capital Calls minus Total Adjustments)
+  - DPI: {dpi_val} (Calculated as Total Distributions / PIC)
+- **Do NOT re-calculate these values from individual transactions unless explicitly asked to show the breakdown from raw data.**
+- Show your work step-by-step using the pre-calculated values.
+- Explain any assumptions made based on the pre-calculated data.
+
+Format your responses for maximum clarity and readability:
+- Use clear headings (e.g., "1. Explanation of DPI", "2. Calculation Steps")
 - Use bullet points for lists
-- Bold important numbers using **number**
-- Provide context for metrics"""),
+- **CRITICAL: NEVER use LaTeX, Markdown math blocks, or any mathematical formatting like $$...$$, \\frac, \\text, \\mathbf, etc.**
+- **ALWAYS use standard plain text with mathematical symbols: `=`, `-`, `+`, `/`, `*`. For example: `DPI = 4000000 / 10400000`**
+- **Ensure there is a blank line (\\n\\n) between paragraphs and major sections.**
+- Bold important final numbers using **number** (this is standard Markdown for bold text).
+- Provide context for metrics.
+- Keep explanations concise but thorough.
+
+Important Calculation Rule (from CALCULATIONS.md):
+- DPI is calculated as Cumulative Distributions (Gross) divided by Paid-In Capital (Net).
+- Paid-In Capital (Net) is calculated as Total Capital Calls minus Total Adjustments.
+- Distributions are taken at their gross amount, without subtracting recalls for this specific DPI calculation unless specified otherwise by the user's question.
+"""),
             ("user", """Context from documents:
 {context}
 {metrics}
@@ -198,10 +226,11 @@ Format your responses:
 
 Question: {query}
 
-Please provide a helpful answer based on the context and metrics provided.""")
+Please provide a helpful answer based on the context and metrics provided, using the pre-calculated values.""")
         ])
+        # --- AKHIR PROMPT SISTEM YANG DIPERBAIKI ---
 
-        # Generate response
+        # Generate response using the updated prompt
         messages = prompt.format_messages(
             context=context_str,
             metrics=metrics_str,
@@ -216,3 +245,5 @@ Please provide a helpful answer based on the context and metrics provided.""")
             return str(response)
         except Exception as e:
             return f"I apologize, but I encountered an error generating a response: {str(e)}"
+
+

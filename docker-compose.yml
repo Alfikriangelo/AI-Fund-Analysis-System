@@ -37,6 +37,8 @@ services:
     container_name: fund-backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
       DATABASE_URL: postgresql://postgres:lakuna1911@postgres:5432/interopera_db
       REDIS_URL: redis://redis:6379/0

@@ -9,71 +9,122 @@ TODO: Implement vector storage using pgvector
 """
 from typing import List, Dict, Any, Optional
 import numpy as np
+import json # Import json untuk konversi metadata
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, insert, select
 # Ganti import ini:
 # from langchain_openai import OpenAIEmbeddings
 # from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings # Masih digunakan sebagai fallback
+from langchain_community.embeddings import HuggingFaceEmbeddings # <-- Tambahkan ini untuk fallback lokal
 from app.core.config import settings
 from app.db.session import SessionLocal
+from sqlalchemy.sql import table, column
+from sqlalchemy import Integer, String, Text, JSON
 
 
 class VectorStore:
     """pgvector-based vector store for document embeddings"""
 
     # Dimensi default berdasarkan model embedding yang umum
-    # Google: models/embedding-001 -> 768
+    # Google: models/embedding-001 -> 768, models/text-embedding-004 -> 768
     # OpenAI: text-embedding-3-small -> 1536, text-embedding-ada-002 -> 1536
-    # Sentence Transformers: all-MiniLM-L6-v2 -> 384
+    # Sentence Transformers: all-MiniLM-L6-v2 -> 384, all-mpnet-base-v2 -> 768, BAAI/bge-large-en-v1.5 -> 1024
     _DEFAULT_DIMENSIONS = {
         "models/embedding-001": 768,
+        "models/text-embedding-004": 768, # <-- Tambahkan dimensi untuk model baru
         # Tambahkan model lain jika diperlukan
     }
 
     def __init__(self, db: Session = None):
         self.db = db or SessionLocal()
-        self.embeddings = self._initialize_embeddings()
+        self.embeddings = self._initialize_embeddings() # Gunakan hasil inisialisasi
+        self.embedding_dimension = self._get_embedding_dimension() # Simpan dimensi
+        # Definisikan tabel SQLAlchemy Core untuk insert/select (opsional, untuk referensi)
+        # self.document_embeddings_table = table('document_embeddings',
+        #     column('id', Integer),
+        #     column('document_id', Integer),
+        #     column('fund_id', Integer),
+        #     column('content', Text),
+        #     column('embedding'),
+        #     column('metadata', JSON)
+        # )
         self._ensure_extension()
 
     def _initialize_embeddings(self):
-        """Initialize embedding model"""
-        if settings.GOOGLE_API_KEY: # <-- GANTI KONDISI
-            print("Using Google Generative AI Embeddings") # Log untuk debugging
-            return GoogleGenerativeAIEmbeddings( # <-- GANTI INISIALISASI
-                model=settings.GEMINI_EMBEDDING_MODEL, # <-- GANTI NAMA MODEL
-                google_api_key=settings.GOOGLE_API_KEY # <-- GANTI NAMA API KEY
-            )
+        """Initialize embedding model based on settings."""
+        # Periksa apakah penggunaan model lokal diaktifkan
+        if settings.USE_LOCAL_EMBEDDINGS: # <-- Gunakan variabel konfigurasi
+            print("Using Local HuggingFace Embeddings")
+            # Gunakan model lokal yang ditentukan di konfigurasi
+            return HuggingFaceEmbeddings(model_name=settings.LOCAL_EMBEDDING_MODEL)
         else:
-            # Fallback ke local embeddings
-            print("Using HuggingFace Embeddings (Fallback)") # Log untuk debugging
-            return HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            # Gunakan Google Embedding
+            if not settings.GOOGLE_API_KEY:
+                raise ValueError("GOOGLE_API_KEY is required for Google embeddings. Please set it in .env or set USE_LOCAL_EMBEDDINGS=True")
+            print("Using Google Generative AI Embeddings")
+            # Pastikan nama model Google benar (harus diawali models/)
+            return GoogleGenerativeAIEmbeddings(
+                model=settings.GEMINI_EMBEDDING_MODEL, # Pastikan ini adalah "models/text-embedding-004" atau "models/embedding-001"
+                google_api_key=settings.GOOGLE_API_KEY
             )
 
     def _get_embedding_dimension(self) -> int:
         """
         Mendapatkan dimensi embedding dari model yang digunakan.
-        Jika model tidak dikenal, coba deteksi dari tabel database.
+        Jika model tidak dikenal, coba deteksi dari tabel database atau gunakan default.
         """
-        model_name = getattr(self.embeddings, "model", None)
+        # Cek model Google terlebih dahulu
+        model_name = getattr(self.embeddings, "model", None) # Untuk Google
         if model_name and model_name in self._DEFAULT_DIMENSIONS:
-            return self._DEFAULT_DIMENSIONS[model_name]
+            dim = self._DEFAULT_DIMENSIONS[model_name]
+            print(f"Detected embedding dimension {dim} for model {model_name}")
+            return dim
 
-        # Fallback: Coba deteksi dari tabel jika sudah ada
-        # Peringatan: Ini bisa gagal jika tabel kosong atau kolom embedding tidak bisa di-query
-        # Solusi paling aman adalah menentukan dimensi berdasarkan model yang dikonfigurasi.
-        # Karena HuggingFaceEmbeddings tidak selalu menyediakan cara mudah untuk mendapatkan dimensi,
-        # kita asumsikan dimensi default untuk model fallback.
-        if "all-MiniLM-L6-v2" in getattr(self.embeddings, "model_name", ""):
-            return 384
+        # Cek model HuggingFace
+        hf_model_name = getattr(self.embeddings, "model_name", None) # Untuk HuggingFace
+        if hf_model_name:
+            # Mapping dimensi umum untuk model HuggingFace lokal
+            hf_dimensions = {
+                "sentence-transformers/all-MiniLM-L6-v2": 384,
+                "sentence-transformers/all-MiniLM-L12-v2": 384,
+                "sentence-transformers/all-mpnet-base-v2": 768,
+                "BAAI/bge-small-en-v1.5": 384,
+                "BAAI/bge-base-en-v1.5": 768,
+                "BAAI/bge-large-en-v1.5": 1024, # <-- Tambahkan dimensi untuk model Anda
+                # Tambahkan model lain jika diperlukan
+            }
+            if hf_model_name in hf_dimensions:
+                dim = hf_dimensions[hf_model_name]
+                print(f"Detected embedding dimension {dim} for HuggingFace model {hf_model_name}")
+                return dim
 
-        # Jika tidak bisa ditentukan, kembalikan default atau raise exception
-        # Disini kita asumsikan model Google (768) sebagai default jika tidak ada yang lain.
-        # Ini bisa disesuaikan.
-        print(f"Warning: Could not determine embedding dimension for {model_name}. Using default.")
-        return 768 # Default untuk Google Embedding Model jika tidak bisa dideteksi dari konfigurasi
+        # Fallback: Coba deteksi dari tabel jika sudah ada (kompleks, dihindari dulu)
+        # Gunakan default atau raise exception
+        # Disini kita asumsikan model Google (768) sebagai default jika tidak bisa dideteksi.
+        # Atau, kita bisa raise error jika model tidak dikenal.
+        print(f"Warning: Could not determine embedding dimension for model {model_name or hf_model_name}. Using default based on configuration.")
+        # Kita bisa menentukan default berdasarkan konfigurasi
+        if settings.USE_LOCAL_EMBEDDINGS:
+            # Default jika menggunakan model lokal dan tidak dikenal
+            # Ambil dari mapping default di atas atau tetapkan default
+            # Misalnya, untuk BAAI/bge-large-en-v1.5, defaultnya adalah 1024
+            # Kita bisa tambahkan logika untuk menentukan default jika model_name tidak dikenal
+            # Untuk sementara, gunakan default yang umum untuk model besar jika LOCAL_EMBEDDING_MODEL adalah yang besar
+            if "bge-large" in settings.LOCAL_EMBEDDING_MODEL:
+                 return 1024
+            elif "bge-base" in settings.LOCAL_EMBEDDING_MODEL:
+                 return 768
+            elif "all-mpnet" in settings.LOCAL_EMBEDDING_MODEL:
+                 return 768
+            elif "all-MiniLM" in settings.LOCAL_EMBEDDING_MODEL:
+                 return 384
+            else:
+                 print("Using default dimension 768 for local embeddings (unknown specific model).")
+                 return 768
+        else:
+             print("Using default dimension 768 for Google embeddings (unknown specific model).")
+             return 768 # Default untuk Google Embedding Model jika tidak bisa dideteksi dari konfigurasi
 
     def _ensure_extension(self):
         """
@@ -89,17 +140,18 @@ class VectorStore:
             self.db.commit() # Commit perubahan extension
 
             # Dapatkan dimensi embedding dari model yang digunakan
-            dimension = self._get_embedding_dimension()
+            dimension = self.embedding_dimension # Gunakan dimensi yang sudah dihitung di __init__
             print(f"Using embedding dimension: {dimension}") # Log untuk debugging
 
             # Create embeddings table
+            # Gunakan f-string untuk menyisipkan dimensi ke dalam definisi tabel
             create_table_sql = f"""
             CREATE TABLE IF NOT EXISTS document_embeddings (
                 id SERIAL PRIMARY KEY,
                 document_id INTEGER,
                 fund_id INTEGER,
                 content TEXT NOT NULL,
-                embedding vector({dimension}),
+                embedding vector({dimension}), -- Dimensi disisipkan di sini
                 metadata JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -117,7 +169,7 @@ class VectorStore:
             self.db.rollback()
             raise # Re-raise untuk menghentikan proses jika gagal
 
-    async def add_document(self, content: str, metadata: Dict[str, Any]):
+    async def add_document(self, content: str, metadata: Dict[str, Any]): # <-- GANTI NAMA PARAMETER DARI 'meta' MENJADI 'metadata'
         """
         Add a document to the vector store
 
@@ -131,25 +183,50 @@ class VectorStore:
             embedding = await self._get_embedding(content)
             embedding_list = embedding.tolist()
 
-            # Insert into database
-            insert_sql = text("""
-                INSERT INTO document_embeddings (document_id, fund_id, content, embedding, metadata)
-                VALUES (:document_id, :fund_id, :content, :embedding::vector, :metadata::jsonb)
-            """)
+            # Convert embedding list to string for pgvector
+            embedding_str = "[" + ",".join(str(float(x)) for x in embedding) + "]"
 
+            # --- PERBAIKAN: Konversi metadata dict ke string JSON ---
+            # PostgreSQL kolom JSONB mengharapkan string JSON.
+            # SQLAlchemy biasanya menanganinya jika kolomnya didefinisikan dengan tipe JSON/JSONB di model,
+            # tetapi karena kita menggunakan text() dan raw SQL, kita harus konversi manual.
+            metadata_json_str = json.dumps(metadata) # <-- GANTI 'meta' MENJADI 'metadata'
+            # --------------------------------------------------------
+
+            # --- PENDEKATAN YANG DIPERBAIKI: Gunakan text() dan session.execute() ---
+            # dengan placeholder :nama (hanya satu gaya placeholder)
+            # Kita masukkan string embedding sebagai parameter juga, bukan casting di dalam VALUES.
+            # Casting ::vector akan diterapkan oleh PostgreSQL saat insert ke kolom bertipe vector.
+            # Jadi, kita kirim string embedding ke parameter :embedding.
+            insert_sql_raw = """
+                INSERT INTO document_embeddings (document_id, fund_id, content, embedding, metadata)
+                VALUES (:document_id, :fund_id, :content, :embedding, :metadata)
+            """
+
+            # Buat objek text() hanya dari string SQL mentah
+            insert_sql = text(insert_sql_raw)
+
+            # Gunakan session.execute() dengan statement dan parameter dictionary
+            # Gunakan gaya :nama untuk SEMUA parameter
+            # Pastikan semua placeholder di SQL memiliki pasangan di dictionary ini.
             self.db.execute(insert_sql, {
-                "document_id": metadata.get("document_id"),
-                "fund_id": metadata.get("fund_id"),
+                "document_id": metadata.get("document_id"), # <-- GANTI 'meta' MENJADI 'metadata'
+                "fund_id": metadata.get("fund_id"),         # <-- GANTI 'meta' MENJADI 'metadata'
                 "content": content,
-                "embedding": str(embedding_list), # Convert list to string for pgvector
-                "metadata": str(metadata) # Convert dict to string for JSONB
+                "embedding": embedding_str, # <-- Kirim string embedding ke parameter :embedding
+                "metadata": metadata_json_str        # <-- Kirim string JSON metadata ke parameter :metadata
             })
+            # --- AKHIR PENDEKATAN YANG DIPERBAIKI ---
+
             self.db.commit()
-            print(f"Document added successfully with metadata: {metadata}")
+            print(f"Document added successfully with metadata {metadata}") # <-- GANTI 'meta' MENJADI 'metadata'
         except Exception as e:
             print(f"Error adding document: {e}")
+            # Cetak statement SQL yang bermasalah untuk debugging (opsional, jangan di-production)
+            # print(f"SQL Statement that failed: {insert_sql_raw if 'insert_sql_raw' in locals() else 'N/A'}")
+            # print(f"Parameters that failed: {params if 'params' in locals() else 'N/A'}")
             self.db.rollback()
-            raise
+            raise # Re-raise agar error bisa ditangani oleh pemanggil
 
     async def similarity_search(
         self,
@@ -159,57 +236,40 @@ class VectorStore:
     ) -> List[Dict[str, Any]]:
         """
         Search for similar documents using cosine similarity
-
-        TODO: Implement this method
-        - Generate query embedding
-        - Use pgvector's <=> operator for cosine distance
-        - Apply metadata filters if provided
-        - Return top k results
-
-        Args:
-            query: Search query
-            k: Number of results to return
-            filter_metadata: Optional metadata filters (e.g., {"fund_id": 1})
-
-        Returns:
-            List of similar documents with scores
         """
         try:
-            # Generate query embedding using the same self.embeddings
+            # Generate query embedding
             query_embedding = await self._get_embedding(query)
-            embedding_list = query_embedding.tolist()
+            # Convert to the same string format used in add_document
+            query_embedding_str = "[" + ",".join(str(float(x)) for x in query_embedding) + "]"
 
-            # Build query with optional filters
-            where_clause = ""
-            params = {"query_embedding": str(embedding_list), "k": k}
+            # Build WHERE clause for filtering
+            where_conditions = []
             if filter_metadata:
-                conditions = []
-                for key, value in filter_metadata.items():
-                    if key in ["document_id", "fund_id"]:
-                        conditions.append(f"{key} = :{key}")
-                        params[key] = value
-                if conditions:
-                    where_clause = "WHERE " + " AND ".join(conditions)
+                if "fund_id" in filter_metadata:
+                    where_conditions.append(f"fund_id = {filter_metadata['fund_id']}")
+                if "document_id" in filter_metadata:
+                    where_conditions.append(f"document_id = {filter_metadata['document_id']}")
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
 
-            # Search using cosine distance (<=> operator)
-            # Score is calculated as 1 - distance (so higher is more similar)
-            search_sql = text(f"""
+            # Use f-string to directly insert the stringified embedding and k into the SQL
+            # This avoids placeholder escaping issues entirely.
+            search_sql = f"""
                 SELECT
                     id,
                     document_id,
                     fund_id,
                     content,
                     metadata,
-                    1 - (embedding <=> :query_embedding::vector) as similarity_score
+                    1 - (embedding <=> '{query_embedding_str}'::vector) as similarity_score
                 FROM document_embeddings
                 {where_clause}
-                ORDER BY embedding <=> :query_embedding::vector
-                LIMIT :k
-            """)
+                ORDER BY embedding <=> '{query_embedding_str}'::vector
+                LIMIT {k}
+            """
 
-            result = self.db.execute(search_sql, params)
-
-            # Format results
+            result = self.db.execute(text(search_sql))
             results = []
             for row in result:
                 results.append({
@@ -217,8 +277,8 @@ class VectorStore:
                     "document_id": row[1],
                     "fund_id": row[2],
                     "content": row[3],
-                    "metadata": row[4], # row[4] adalah metadata JSONB, bisa langsung di-return
-                    "score": float(row[5]) # row[5] adalah similarity_score
+                    "metadata": row[4],
+                    "score": float(row[5])
                 })
 
             print(f"Similarity search returned {len(results)} results.")
@@ -240,7 +300,11 @@ class VectorStore:
                 raise AttributeError(f"Embedding model {type(self.embeddings)} has no 'embed_query' or 'encode' method.")
         except Exception as e:
             print(f"Error generating embedding: {e}")
-            raise # Re-raise agar error bisa ditangani oleh fungsi pemanggil
+            # Ganti raise dengan return array kosong atau nilai default jika gagal
+            # agar proses tidak berhenti total (opsional, tergantung kebijakan error handling)
+            # raise
+            print("Returning zero vector due to embedding error.")
+            return np.zeros(self.embedding_dimension, dtype=np.float32) # Atau sesuaikan
 
         return np.array(embedding, dtype=np.float32)
 
@@ -253,6 +317,7 @@ class VectorStore:
         """
         try:
             if fund_id:
+                # Gunakan placeholder :nama
                 delete_sql = text("DELETE FROM document_embeddings WHERE fund_id = :fund_id")
                 self.db.execute(delete_sql, {"fund_id": fund_id})
                 print(f"Cleared embeddings for fund_id: {fund_id}")
