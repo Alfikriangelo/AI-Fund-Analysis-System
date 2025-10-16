@@ -1,6 +1,6 @@
 # Fund Performance Analysis System (InterOpera Coding Test 3rd)
 
-A comprehensive system for extracting, analyzing, and visualizing private equity fund performance from PDF reports. This project fulfills the requirements for the [InterOpera Coding Test (Phase 3)](https://github.com/InterOpera-Apps/coding-test-3rd).
+A comprehensive system for extracting, analyzing, and visualizing private equity fund performance from PDF reports. This project fulfills the requirements for the [InterOpera Coding Test(https://github.com/InterOpera-Apps/coding-test-3rd).
 
 ## 🎯 Objectives
 
@@ -14,12 +14,13 @@ To develop a robust platform that enables users to:
 ## 🏛️ Architecture Overview
 
 The system is a full-stack application composed of three main layers:
+```sh
 fund-analysis-system/
 ├── backend/ # Python FastAPI REST API & business logic
 ├── frontend/ # Next.js 14 (App Router) React UI
 ├── postgres/ # PostgreSQL database with pgvector extension
 └── redis/ # Redis for caching and background tasks (potential future use)
-
+```
 
 ### Backend (`backend/`)
 
@@ -32,7 +33,7 @@ fund-analysis-system/
     *   Store extracted data in a relational database (PostgreSQL).
     *   Perform complex financial calculations (XIRR) for metrics (PIC, DPI, IRR) according to `CALCULATIONS.md`.
     *   Manage embeddings and semantic search using `pgvector`.
-    *   Provide a chat endpoint that integrates an LLM (like Google Gemini or Ollama) for natural language querying via RAG.
+    *   Provide a chat endpoint that integrates an LLM (like Google Gemini) for natural language querying via RAG.
 
 ### Frontend (`frontend/`)
 
@@ -96,7 +97,7 @@ These instructions will get you a copy of the project up and running on your loc
         cp backend/.env.example backend/.env
         ```
     *   Edit `backend/.env`:
-        *   Set your `GOOGLE_API_KEY` for Gemini embeddings and chat (or configure for Ollama/Groq).
+        *   Set your `GOOGLE_API_KEY` for Gemini embeddings and chat.
         *   Adjust any other settings as needed.
 
 3.  **Build and Run with Docker Compose:**
@@ -145,17 +146,18 @@ These instructions will get you a copy of the project up and running on your loc
     ```
     (Ensure the backend is running on `http://localhost:8000`).
 
-## 🗣️ How to Use the System (Following InterOpera Guide)
+## 🗣️ How to Use the System
 
 1.  **Navigate to the Upload Page:** Go to `http://localhost:3000/upload`.
 2.  **Create or Select a Fund:** Before uploading a document, you need to associate it with a fund. Either create a new fund or select an existing one.
-3.  **Upload a PDF Report:** Drag and drop the `Sample_Fund_Performance_Report (1).pdf` onto the upload area or click to select it. Click the upload button.
+3.  **Upload a PDF Report:** Drag and drop the `Sample_Fund_Performance_Report.pdf` onto the upload area or click to select it. Click the upload button.
 4.  **Monitor Processing:** The system will parse the document. You can check the status on the `/documents` page or see a success message.
 5.  **View Metrics:** Go to the `/funds` dashboard. Your fund should now display updated metrics (PIC, DPI, IRR).
 6.  **Explore Transactions:** Click on a fund to view its detailed transaction history.
 7.  **Ask Questions:** Go to the `/chat` page. Select the fund you are interested in. Ask questions like "What is the current DPI?" or "Calculate the IRR for this fund." The system will use the latest data to formulate a response.
 
 ## 📁 Project Structure
+```sh
 fund-analysis-system/
 ├── backend/
 │ ├── app/
@@ -180,7 +182,7 @@ fund-analysis-system/
 ├── docker-compose.yml # Defines and runs multi-container Docker applications
 ├── README.md # This file
 └── ... # Other config files (.gitignore, etc.)
-
+```
 
 ## 📜 License
 
