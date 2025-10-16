@@ -93,7 +93,7 @@ fund-analysis-system/
 - **ORM**: SQLAlchemy
 - **Task Queue**: Built-in `BackgroundTasks` (for simplicity, can be upgraded to Celery)
 - **LLM Framework**: [LangChain](https://www.langchain.com/)
-- **Embeddings**: Google Generative AI (`models/text-embedding-004`) or Ollama
+- **Embeddings**: Google Generative AI (`models/text-embedding-004`)
 - **Vector Store**: `pgvector` (integrated with PostgreSQL)
 
 ### Frontend
