@@ -13,7 +13,7 @@ To develop a robust platform that enables users to:
 
 ## 🏛️ Architecture Overview
 
-The system is a full-stack application composed of three main layers:
+The system is a full-stack application composed of four main layers:
 ```sh
 fund-analysis-system/
 ├── backend/ # Python FastAPI REST API & business logic
@@ -159,29 +159,49 @@ These instructions will get you a copy of the project up and running on your loc
 ## 📁 Project Structure
 ```sh
 fund-analysis-system/
-├── backend/
-│ ├── app/
-│ │ ├── api/ # API route definitions
-│ │ ├── core/ # Configuration, security
-│ │ ├── db/ # Database session, models
-│ │ ├── models/ # SQLAlchemy ORM models
-│ │ ├── schemas/ # Pydantic models for request/response validation
-│ │ ├── services/ # Business logic (DocumentProcessor, MetricsCalculator, QueryEngine, VectorStore)
-│ │ └── main.py # FastAPI application instance
-│ ├── uploads/ # Directory for uploaded files (mapped in docker-compose)
-│ ├── Dockerfile # Backend Docker image definition
-│ ├── requirements.txt # Python dependencies
-│ └── entrypoint.sh # Script to initialize DB and start server
-├── frontend/
-│ ├── app/ # Next.js App Router pages
-│ ├── components/ # Reusable React components
-│ ├── lib/ # Utility functions, API clients
-│ ├── public/ # Static assets
-│ ├── Dockerfile # Frontend Docker image definition
-│ └── package.json # Node.js dependencies
-├── docker-compose.yml # Defines and runs multi-container Docker applications
-├── README.md # This file
-└── ... # Other config files (.gitignore, etc.)
+├── backend/                  # All Python FastAPI code
+│   ├── app/                  # FastAPI application root
+│   │   ├── api/              # API endpoints (documents.py, funds.py, chat.py, metrics.py)
+│   │   ├── core/             # Configuration and security (config.py, security.py)
+│   │   ├── db/               # Database session and initialization (session.py, init_db.py)
+│   │   ├── models/           # SQLAlchemy models (document.py, fund.py, transaction.py)
+│   │   ├── schemas/          # Pydantic models for request/response validation (fund.py, transaction.py, chat.py)
+│   │   ├── services/         # Business logic (document_processor.py, metrics_calculator.py, query_engine.py, vector_store.py)
+│   │   └── main.py           # FastAPI entry point
+│   ├── uploads/              # Directory for uploaded PDF files (mapped by Docker)
+│   ├── Dockerfile            # File to build the backend Docker image
+│   ├── requirements.txt     # List of Python dependencies
+│   └── entrypoint.sh         # Script to run the server after the container starts
+│
+├── frontend/                # All Next.js code
+│   ├── app/                  # Next.js pages (App Router)
+│   │   ├── layout.tsx        # Global layout
+│   │   ├── page.tsx          # Main page (dashboard)
+│   │   ├── upload/           # Upload page
+│   │   │   └── page.tsx
+│   │   ├── chat/             # Chat page
+│   │   │   └── page.tsx
+│   │   └── funds/            # Fund list and detail pages
+│   │       ├── page.tsx
+│   │       └── [id]/         # Dynamic route for displaying a specific fund's details
+│   │           └── page.tsx
+│   ├── components/          # Reusable React components
+│   │   ├── ui/               # UI components (button, card, input, etc.)
+│   │   ├── FileUpload.tsx    # File upload component
+│   │   ├── ChatInterface.tsx # Chat interface
+│   │   ├── FundMetrics.tsx   # Fund metrics display
+│   │   └── TransactionTable.tsx # Transaction table
+│   ├── lib/                  # Utility functions and API clients
+│   │   ├── api.ts            # API client to communicate with the backend
+│   │   └── utils.ts          # Helper functions (currency, date formatting, etc.)
+│   ├── public/               # Static assets (images, fonts, etc.)
+│   ├── Dockerfile           # File to build the frontend Docker image
+│   └── package.json         # Node.js dependencies and scripts
+│
+├── docker-compose.yml       # Docker Compose configuration file to run the entire system
+├── .env.example             # Environment file template (copy to .env and fill in API keys)
+├── README.md                # This project documentation
+└── .gitignore               # Files ignored by Git
 ```
 
 ## 📜 License
