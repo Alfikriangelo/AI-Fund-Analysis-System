@@ -27,10 +27,8 @@ async def upload_document(
     fund_id: str = Form(None),  
     db: Session = Depends(get_db)
 ):
-    print(f"🔍 DEBUG: Received fund_id = {fund_id}, type = {type(fund_id)}")
     
     fund_id_int = int(fund_id) if fund_id is not None else None
-    print(f"✅ Converted fund_id_int = {fund_id_int}")
 
     # Validate file type
     if not file.filename.endswith('.pdf'):

@@ -2,16 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, FileText } from "lucide-react";
-import { chatApi, fundApi } from "@/lib/api"; // Perbarui import
+import { chatApi, fundApi } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import remarkGfm from "remark-gfm";
 import ReactMarkdown from "react-markdown";
 
-// --- Definisi tipe sederhana ---
 interface Fund {
   id: number;
   name: string;
-  // Tambahkan field lain jika diperlukan
 }
 
 interface Message {
@@ -21,7 +19,6 @@ interface Message {
   metrics?: any;
   timestamp: Date;
 }
-// --- Batas akhir definisi tipe ---
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -30,63 +27,45 @@ export default function ChatPage() {
   const [conversationId, setConversationId] = useState<string>();
   const [selectedFundId, setSelectedFundId] = useState<number | null>(null);
   const [availableFunds, setAvailableFunds] = useState<Fund[]>([]);
-  const [fetchingFunds, setFetchingFunds] = useState(false); // Untuk loading state fund
+  const [fetchingFunds, setFetchingFunds] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch list of funds on component mount
   useEffect(() => {
     const fetchFunds = async () => {
       setFetchingFunds(true);
       try {
         const funds = await fundApi.list();
         setAvailableFunds(funds);
-        // Pilih fund pertama sebagai default jika ada
         if (funds.length > 0 && selectedFundId === null) {
           setSelectedFundId(funds[0].id);
         }
       } catch (err) {
         console.error("Failed to fetch funds:", err);
-        // Opsional: Tampilkan notifikasi error ke user
       } finally {
         setFetchingFunds(false);
       }
     };
 
     fetchFunds();
-  }, []); // [] berarti hanya dijalankan sekali saat komponen mount
+  }, []);
 
-  // Create conversation when selectedFundId changes or on initial load
   useEffect(() => {
     const createNewConversation = async () => {
       try {
-        // --- PERUBAHAN DISINI: Kirim selectedFundId langsung sebagai argumen ---
         const conv = await chatApi.createConversation(
           selectedFundId ?? undefined
         );
-        // --- AKHIR PERUBAHAN ---
         setConversationId(conv.conversation_id);
-        console.log(
-          "Created conversation with ID:",
-          conv.conversation_id,
-          "and fund_id:",
-          selectedFundId
-        );
-        // Kosongkan pesan jika ada percakapan baru
         setMessages([]);
       } catch (err) {
         console.error("Failed to create conversation:", err);
-        // Opsional: Tampilkan notifikasi error
       }
     };
 
-    // Hanya buat percakapan jika fund_id telah dipilih (bukan null)
     if (selectedFundId !== null) {
       createNewConversation();
     }
-    // Jika Anda ingin membuat percakapan umum tanpa fund_id saat tidak ada fund,
-    // Anda bisa memanggil createConversation() tanpa argumen.
-    // Namun, logika Anda saat ini tampaknya mengharuskan fund_id.
-  }, [selectedFundId]); // Tambahkan selectedFundId sebagai dependency
+  }, [selectedFundId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -94,7 +73,7 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || loading || !conversationId) return; // Tunggu sampai conversationId ada
+    if (!input.trim() || loading || !conversationId) return;
 
     const userMessage: Message = {
       role: "user",
@@ -107,13 +86,11 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // --- PERUBAHAN UTAMA: Kirim selectedFundId ---
       const response = await chatApi.query(
         input,
         selectedFundId ?? undefined,
         conversationId
       );
-      // --- AKHIR PERUBAHAN ---
 
       const assistantMessage: Message = {
         role: "assistant",
@@ -146,7 +123,6 @@ export default function ChatPage() {
         <p className="text-gray-600">
           Ask questions about fund performance, metrics, and transactions
         </p>
-        {/* Dropdown untuk memilih fund */}
         <div className="mt-4">
           <label
             htmlFor="fund-select"
@@ -166,12 +142,12 @@ export default function ChatPage() {
                 )
               }
               className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-              disabled={availableFunds.length === 0 || loading} // Disable saat loading atau tidak ada fund
+              disabled={availableFunds.length === 0 || loading}
             >
               <option value="">-- Select a Fund --</option>
               {availableFunds.map((fund) => (
                 <option key={fund.id} value={fund.id}>
-                  {fund.name} {/* Ganti dengan field nama fund yang sesuai */}
+                  {fund.name}
                 </option>
               ))}
             </select>
@@ -222,7 +198,6 @@ export default function ChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
         <div className="border-t p-4">
           <form onSubmit={handleSubmit} className="flex space-x-2">
             <input
@@ -231,11 +206,11 @@ export default function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a question about the fund..."
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={loading || !selectedFundId} // Disable input sampai fund dipilih
+              disabled={loading || !selectedFundId}
             />
             <button
               type="submit"
-              disabled={loading || !input.trim() || !selectedFundId} // Disable tombol sampai fund dipilih
+              disabled={loading || !input.trim() || !selectedFundId}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
             >
               <Send className="w-4 h-4" />
@@ -277,15 +252,12 @@ function MessageBubble({ message }: { message: Message }) {
                 if (value === null || value === undefined) return null;
 
                 let displayValue: string;
-                const displayKey = key; // Simpan nama asli untuk referensi
+                const displayKey = key;
 
-                // Format nilai berdasarkan jenis metrik
                 if (typeof value === "number") {
                   if (key.toLowerCase().includes("irr")) {
-                    // IRR: 2 angka desimal + %
                     displayValue = `${value.toFixed(2)}%`;
                   } else if (key.toLowerCase().includes("dpi")) {
-                    // DPI: 4 angka desimal + 'x'
                     displayValue = `${value.toFixed(4)}x`;
                   } else if (
                     key.toLowerCase().includes("pic") ||
@@ -293,14 +265,12 @@ function MessageBubble({ message }: { message: Message }) {
                   ) {
                     displayValue = `${formatCurrency(value)}`;
                   } else {
-                    // Metrik lainnya: tampilkan sebagai angka biasa tanpa pembulatan ekstra
                     displayValue = value.toString();
                   }
                 } else {
                   displayValue = String(value);
                 }
 
-                // Buat label yang lebih bersih
                 let displayName: string;
                 switch (key) {
                   case "pic":
@@ -316,7 +286,6 @@ function MessageBubble({ message }: { message: Message }) {
                     displayName = "IRR";
                     break;
                   default:
-                    // Jika tidak cocok, gunakan nama asli dengan kapitalisasi pertama huruf
                     displayName = key
                       .replace(/_/g, " ")
                       .replace(/\b\w/g, (l) => l.toUpperCase());
@@ -333,8 +302,6 @@ function MessageBubble({ message }: { message: Message }) {
           </div>
         )}
 
-        {/* Sources Display */}
-        {/* Sources Display */}
         {message.sources && message.sources.length > 0 && (
           <div className="mt-3">
             <details className="bg-white border border-gray-200 rounded-lg">
@@ -344,7 +311,6 @@ function MessageBubble({ message }: { message: Message }) {
               <div className="px-4 py-3 space-y-2 border-t">
                 {message.sources.slice(0, 3).map((source, idx) => (
                   <div key={idx} className="text-xs bg-gray-50 p-2 rounded">
-                    {/* --- PERUBAHAN: Gunakan ReactMarkdown dengan styling khusus --- */}
                     <div className="prose prose-xs max-w-none">
                       <style jsx>{`
                         /* Sembunyikan semua heading level 1, 2, 3 */

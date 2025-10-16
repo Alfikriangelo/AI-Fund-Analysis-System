@@ -35,7 +35,6 @@ class MetricsCalculator:
             "nav": None,
         }
 
-    # Di dalam file metrics_calculator.py
 
     def calculate_pic(self, fund_id: int) -> Optional[Decimal]:
         """
@@ -45,7 +44,6 @@ class MetricsCalculator:
         Adjustments typically include recallable distributions (as negative values)
         and other adjustments like fee refunds (positive) or expenses (negative).
         """
-        # 1. Hitung Total Capital Calls
         total_calls_result = self.db.query(
             func.sum(CapitalCall.amount)
         ).filter(
@@ -54,8 +52,6 @@ class MetricsCalculator:
 
         total_calls = total_calls_result if total_calls_result is not None else Decimal(0)
 
-
-        # 2. Hitung Total Adjustments
         total_adjustments_result = self.db.query(
             func.sum(Adjustment.amount)
         ).filter(
@@ -64,15 +60,7 @@ class MetricsCalculator:
 
         total_adjustments = total_adjustments_result if total_adjustments_result is not None else Decimal(0)
 
-        # 3. Hitung PIC
         pic = total_calls - total_adjustments
-
-        # --- PERBAIKAN: Log Debug ---
-        print(f"🔍 PIC Calculation DEBUG:")
-        print(f"   ├─ Total Capital Calls : {total_calls}")
-        print(f"   ├─ Total Adjustments   : {total_adjustments}")
-        print(f"   └─ PIC (Calls - Adj)   : {pic}")
-        # --- AKHIR PERBAIKAN ---
 
         return pic if pic > 0 else Decimal(0)
 
@@ -84,7 +72,6 @@ class MetricsCalculator:
         ).filter(
             Distribution.fund_id == fund_id
         ).scalar() or Decimal(0)
-        print(f"🔍 Total Distributions = {total}")
         return total
 
     def calculate_dpi(self, fund_id: int) -> Optional[float]:
@@ -96,12 +83,10 @@ class MetricsCalculator:
         total_distributions = self.calculate_total_distributions(fund_id)
 
         if not pic or pic == 0:
-            print("⚠️ DPI: PIC is zero or None → returning 0.0")
             return 0.0
 
         dpi = float(total_distributions) / float(pic)
         dpi_rounded = round(dpi, 4)
-        print(f"🔍 DPI Calculation: {float(total_distributions):,.2f} / {float(pic):,.2f} = {dpi_rounded:.4f}")
         return dpi_rounded
 
     def calculate_irr(self, fund_id: int) -> Optional[float]:
@@ -139,92 +124,66 @@ class MetricsCalculator:
                 dates.append(dist.distribution_date)
                 cash_flows.append(float(dist.amount))
 
-            print("\n=== CASH FLOW DEBUG (CALCULATE_IRR - BEFORE NAV) ===")
             for date, amount in zip(dates, cash_flows):
                 print(f"{date} | {amount}")
-            print("==============================================\n")
 
             if len(cash_flows) < 2:
-                print("⚠️ IRR: Less than 2 cash flows → returning None")
                 return None
 
-            # --- PERBAIKAN: Tambahkan NAV sebagai cash flow terakhir ---
-            # --- Menggunakan logika dari CALCULATIONS.md dan target TVPI dari PDF ---
             pic = self.calculate_pic(fund_id)
             total_distributions = self.calculate_total_distributions(fund_id)
 
-            # Target TVPI dari PDF Sample Fund Performance Report
             target_tvpi = 1.45
 
             if pic and total_distributions and pic > 0:
-                # Hitung NAV berdasarkan TVPI target
                 nav = (target_tvpi * float(pic)) - float(total_distributions)
-                # Tambahkan NAV sebagai cash flow terakhir (positif)
-                # Gunakan tanggal terakhir dari cash flows yang ada, atau tanggal hari ini jika tidak ada
                 last_date = max(dates) if dates else datetime.now().date()
                 dates.append(last_date)
                 cash_flows.append(float(nav))
-                print(f"✅ Added Terminal Value (NAV) for IRR calculation: {nav:,.2f} on {last_date}")
-                print(f"   (Calculated using TVPI = {target_tvpi}, PIC = {float(pic):,.2f}, Distributions = {float(total_distributions):,.2f})")
+               
             else:
                 print("⚠️ Could not calculate NAV for IRR. Missing PIC or Distributions.")
-            # --- AKHIR PERBAIKAN ---
 
-            # Debug cash flows setelah penambahan NAV
-            print("\n=== CASH FLOW DEBUG (CALCULATE_IRR - FINAL) ===")
+
             for date, amount in zip(dates, cash_flows):
                 print(f"{date} | {amount}")
-            print("==============================================\n")
 
 
-            # Konversi tanggal ke jumlah hari sejak tanggal pertama
             from datetime import date
             first_date = min(dates)
             days_from_start = [(d - first_date).days for d in dates]
 
-            # Fungsi NPV untuk XIRR
             def npv(rate):
                 total = 0.0
                 for cf, days in zip(cash_flows, days_from_start):
                     if rate <= -1:
-                        # Jika rate <= -100%, maka (1 + rate) <= 0, tidak valid
                         return float('inf') if cf > 0 else float('-inf')
                     try:
                         total += cf / ((1 + rate) ** (days / 365.0))
                     except (ZeroDivisionError, OverflowError, ValueError):
-                        # Jika terjadi error numerik, kembalikan infinity
                         return float('inf') if cf > 0 else float('-inf')
                 return total
 
-            # Cari akar dari fungsi NPV (yaitu, NPV = 0)
-            # Gunakan beberapa tebakan awal
             guesses = [0.1, 0.0, -0.1, 0.2, -0.2, 0.5, -0.5]
             irr = None
             for guess in guesses:
                 try:
                     irr = newton(npv, guess, maxiter=100, tol=1e-6)
-                    # Pastikan hasilnya masuk akal
                     if np.isfinite(irr):
-                        print(f"🧮 Raw XIRR (decimal) from guess {guess}: {irr}")
                         break
                 except (RuntimeError, ValueError):
                     continue
             else:
-                # Jika semua tebakan gagal
-                print("❌ XIRR calculation failed to converge after multiple guesses.")
+            
                 return None
-
             if np.isnan(irr) or np.isinf(irr):
-                print("❌ XIRR calculation returned NaN or Inf.")
                 return None
 
             irr_pct = round(float(irr) * 100, 2)
-            print(f"✅ Final XIRR: {irr_pct}%")
             return irr_pct
 
         except Exception as e:
-            print(f"💥 Error calculating XIRR: {e}")
-            traceback.print_exc() # Tambahkan traceback untuk debugging
+            traceback.print_exc() 
             return None
 
     def get_calculation_breakdown(self, fund_id: int, metric: str) -> Dict[str, Any]:

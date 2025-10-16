@@ -13,13 +13,10 @@ export default function UploadPage() {
     documentId?: number;
   }>({ status: "idle" });
 
-  // --- State untuk pemilihan fund ---
   const [selectedFundId, setSelectedFundId] = useState<number | null>(null);
   const [availableFunds, setAvailableFunds] = useState<any[]>([]);
   const [loadingFunds, setLoadingFunds] = useState(true);
-  // ---
 
-  // --- Fetch daftar fund saat halaman dimuat ---
   useEffect(() => {
     const fetchFunds = async () => {
       try {
@@ -33,7 +30,6 @@ export default function UploadPage() {
     };
     fetchFunds();
   }, []);
-  // ---
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -42,7 +38,6 @@ export default function UploadPage() {
       setUploading(true);
       setUploadStatus({ status: "uploading", message: "Uploading file..." });
       try {
-        // --- KIRIM FUND_ID ---
         const result = await documentApi.upload(file, selectedFundId);
         setUploadStatus({
           status: "processing",
@@ -59,7 +54,7 @@ export default function UploadPage() {
       }
     },
     [selectedFundId]
-  ); // <-- dependency pada selectedFundId
+  );
 
   const pollDocumentStatus = async (documentId: number) => {
     const maxAttempts = 60;

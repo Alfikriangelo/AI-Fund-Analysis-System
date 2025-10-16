@@ -10,8 +10,6 @@ export const api = axios.create({
   },
 });
 
-// --- Interfaces/Tipes untuk type safety (opsional tapi disarankan) ---
-// Anda bisa membuat file types.ts terpisah untuk ini
 interface DocumentUploadResponse {
   document_id: number;
   task_id?: string;
@@ -20,9 +18,9 @@ interface DocumentUploadResponse {
 }
 
 export interface DocumentStatus {
-  document_id: number; // <-- Sesuai dengan schemas.DocumentStatus di backend
-  status: string; // <-- SESUAI DENGAN API DAN HARAPAN FRONTEND
-  progress: number | null; // <-- TAMBAHKAN (bisa undefined jika API memang tidak selalu kirim)
+  document_id: number;
+  status: string;
+  progress: number | null;
   error_message: string | null;
 }
 
@@ -33,16 +31,12 @@ interface Fund {
   fund_type?: string;
   vintage_year?: number;
   metrics?: FundMetrics;
-  // tambahkan field lain jika diperlukan
-  // metrics?: FundMetrics; // Jika Anda ingin menyertakan metrics dari awal
 }
 
 interface Transaction {
   id: number;
   fund_id: number;
   amount: number;
-  // Tambahkan field lain sesuai dengan schema CapitalCall/Distribution/Adjustment
-  // Misalnya: call_date, distribution_date, adjustment_date, description, dll.
 }
 
 interface TransactionList {
@@ -59,7 +53,6 @@ interface FundMetrics {
   irr?: number;
   tvpi?: number;
   rvpi?: number;
-  // tambahkan metrik lain jika diperlukan
 }
 
 interface ChatQueryRequest {
@@ -86,9 +79,7 @@ interface Conversation {
   created_at: string;
   updated_at: string;
 }
-// --- Batas akhir interfaces ---
 
-// Document APIs
 export const documentApi = {
   upload: async (
     file: File,
@@ -113,7 +104,6 @@ export const documentApi = {
   },
 
   getStatus: async (documentId: number): Promise<DocumentStatus> => {
-    // <-- Tambahkan tipe return
     const response = await api.get<DocumentStatus>(
       `/api/documents/${documentId}/status`
     );
@@ -121,7 +111,6 @@ export const documentApi = {
   },
 
   list: async (fundId?: number): Promise<any[]> => {
-    // Ganti 'any[]' dengan tipe dokumen yang sesuai jika ada
     const params = fundId ? { fund_id: fundId } : {};
     const response = await api.get<any[]>("/api/documents/", { params });
     return response.data;
@@ -132,7 +121,6 @@ export const documentApi = {
   },
 };
 
-// Fund APIs
 export const fundApi = {
   list: async (): Promise<Fund[]> => {
     const response = await api.get<Fund[]>("/api/funds/");
@@ -145,7 +133,6 @@ export const fundApi = {
   },
 
   create: async (fundData: Omit<Fund, "id">): Promise<Fund> => {
-    // Omit<Fund, 'id'> berarti Fund tanpa field id
     const response = await api.post<Fund>("/api/funds/", fundData);
     return response.data;
   },
@@ -171,17 +158,15 @@ export const fundApi = {
   },
 };
 
-// Chat APIs
 export const chatApi = {
   query: async (
     query: string,
     fundId?: number,
     conversationId?: string
   ): Promise<ChatQueryResponse> => {
-    // --- PERUBAHAN: Pastikan objek request sesuai dengan ChatQueryRequest ---
     const requestData: ChatQueryRequest = {
       query,
-      fund_id: fundId, // <-- fund_id dikirim secara eksplisit
+      fund_id: fundId,
       conversation_id: conversationId,
     };
     const response = await api.post<ChatQueryResponse>(
@@ -192,8 +177,6 @@ export const chatApi = {
   },
 
   createConversation: async (fundId?: number): Promise<Conversation> => {
-    // --- PERUBAHAN: Kirim fund_id saat membuat percakapan ---
-    // Jika fundId tidak diberikan, kirim undefined/null, backend akan menanganinya
     const requestData =
       fundId !== undefined && fundId !== null ? { fund_id: fundId } : {};
     const response = await api.post<Conversation>(
@@ -211,9 +194,6 @@ export const chatApi = {
   },
 };
 
-// Metrics APIs
-// Catatan: Endpoint ini tampaknya duplikat dengan fundApi.getMetrics.
-// Pastikan hanya satu yang digunakan atau sesuaikan sesuai kebutuhan.
 export const metricsApi = {
   getFundMetrics: async (
     fundId: number,

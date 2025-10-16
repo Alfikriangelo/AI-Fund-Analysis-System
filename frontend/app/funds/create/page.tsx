@@ -30,7 +30,6 @@ export default function CreateFundPage() {
         fund_type: fundType.trim() || undefined,
         vintage_year: vintageYear ? Number(vintageYear) : undefined,
       });
-      // Redirect ke halaman detail fund yang baru dibuat
       router.push(`/funds/${newFund.id}`);
     } catch (err: any) {
       setError(err.message || "Failed to create fund");
