@@ -1,6 +1,19 @@
 # Fund Performance Analysis System (InterOpera Coding Test 3rd)
 
-A comprehensive system for extracting, analyzing, and visualizing private equity fund performance from PDF reports. This project fulfills the requirements for the [InterOpera Coding Test(https://github.com/InterOpera-Apps/coding-test-3rd).
+A comprehensive system for extracting, analyzing, and visualizing private equity fund performance from PDF reports. This project fulfills the requirements for the [InterOpera Coding Test (https://github.com/InterOpera-Apps/coding-test-3rd).
+
+## 📸 Screenshots
+Create new Fund
+<img width="960" height="510" alt="image" src="https://github.com/user-attachments/assets/2c68a2bf-8ff9-4edc-b01e-2401661abeea" />
+
+Upload Fund Document
+<img width="960" height="516" alt="image" src="https://github.com/user-attachments/assets/f7423e29-26db-4c15-b61b-55d1402566dc" />
+
+The Result
+<img width="960" height="514" alt="image" src="https://github.com/user-attachments/assets/607662c3-cc71-4963-a245-e2dc6f56e034" />
+
+Fund Analysis Chat
+<img width="960" height="514" alt="image" src="https://github.com/user-attachments/assets/8c5e77c1-6191-4c3a-81d8-82ba185b5c85" />
 
 ## 🎯 Objectives
 
@@ -70,6 +83,31 @@ fund-analysis-system/
 ├── README.md                # This project documentation
 └── .gitignore               # Files ignored by Git
 ```
+
+## ⚙️ Tech Stack
+
+### Backend
+- **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+)
+- **Document Parsing**: [Docling 2.55.1](https://ds4sd.github.io/docling/)
+- **Database**: PostgreSQL 15+ with [pgvector](https://github.com/pgvector/pgvector) extension
+- **ORM**: SQLAlchemy
+- **Task Queue**: Built-in `BackgroundTasks` (for simplicity, can be upgraded to Celery)
+- **LLM Framework**: [LangChain](https://www.langchain.com/)
+- **Embeddings**: Google Generative AI (`models/text-embedding-004`) or Ollama
+- **Vector Store**: `pgvector` (integrated with PostgreSQL)
+
+### Frontend
+- **Framework**: [Next.js 14](https://nextjs.org/) (App Router)
+- **Language**: TypeScript
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)
+- **State Management**: React Hooks / Context
+- **Data Fetching**: Axios, TanStack Query (React Query)
+- **Chat UI**: Custom-built with Markdown rendering (`react-markdown`)
+
+### Infrastructure
+- **Containerization**: Docker & Docker Compose
+- **Database**: PostgreSQL
+- **File Storage**: Local filesystem (mapped via Docker volume)
 
 ## 🔄 API Endpoints
 
@@ -277,6 +315,17 @@ These instructions will get you a copy of the project up and running on your loc
     npm run dev
     ```
     (Ensure the backend is running on `http://localhost:8000`).
+
+## 🔐 Environment Variables (.env.example)
+
+Located in `backend/.env.example`:
+
+```env
+# --- Database ---
+DATABASE_URL=postgresql://funduser:fundpass@postgres:5432/interopera_db
+# --- Google Generative AI (Gemini) ---
+GOOGLE_API_KEY=your_google_api_key_here
+```
 
 ## 🗣️ How to Use the System
 
