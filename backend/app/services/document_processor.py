@@ -9,12 +9,10 @@ import re
 import traceback
 import os
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-
 # --- Docling imports ---
 from docling.document_converter import DocumentConverter
 from docling_core.types import DoclingDocument
 from docling_core.types.doc import TableItem
-
 # --- Local imports ---
 from app.models.fund import Fund
 from app.models.document import Document as DBDocument
@@ -42,17 +40,12 @@ class DocumentProcessor:
         db = SessionLocal()
         try:
             print(f"\n📄 Docling: Processing file {file_path}")
-            # --- Auto fund_id resolution ---
+            
+            # --- ✅ PERBAIKAN UTAMA: JANGAN PERNAH MENEBAK FUND_ID ---
             if not fund_id:
-                fund_id = self._get_fund_id_from_path(db, file_path)
-            if not fund_id:
-                fund_id = self._get_fund_id_from_filename(db, os.path.basename(file_path))
-            if not fund_id:
-                last_fund = db.query(Fund).order_by(Fund.id.desc()).first()
-                fund_id = last_fund.id if last_fund else None
-            if not fund_id:
-                raise ValueError("❌ Unable to determine fund_id automatically.")
-            print(f"🔗 Fund ID used: {fund_id}")
+                raise ValueError("❌ Fund ID is required. Please specify fund_id during upload.")
+            print(f"🔗 Using provided fund_id: {fund_id}")
+            # --- AKHIR PERBAIKAN UTAMA ---
 
             # --- 1. Convert Document ---
             conversion_result = self.converter.convert(file_path)
@@ -73,7 +66,7 @@ class DocumentProcessor:
             tables = self._extract_tables_from_doc(doc)
             print(f"📊 Extracted {len(tables)} table(s)")
 
-            # --- 4. Ensure fund_id is set ---
+            # --- 4. Ensure fund_id is set in DB ---
             doc_db = db.query(DBDocument).filter(DBDocument.id == document_id).first()
             if not doc_db:
                 raise ValueError(f"Document ID {document_id} not found")
@@ -85,10 +78,11 @@ class DocumentProcessor:
             # --- 5. Save structured data to SQL ---
             self._save_to_db(db, document_id, metadata, tables)
 
-            # --- 6. Save unstructured text to Vector DB (NEW!) ---
+            # --- 6. Save unstructured text to Vector DB ---
             await self._save_text_to_vector_store(text, document_id, fund_id)
 
             return {"status": "completed"}
+
         except Exception as e:
             print(f"❌ Processing error: {e}")
             traceback.print_exc()
@@ -129,22 +123,19 @@ class DocumentProcessor:
         return ""
 
     # ----------------------------------------------------------------------
-    # 📦 SAVE TEXT TO VECTOR STORE (NEW!)
+    # 📦 SAVE TEXT TO VECTOR STORE
     # ----------------------------------------------------------------------
     async def _save_text_to_vector_store(self, text: str, document_id: int, fund_id: int):
         if not text.strip():
             print("⚠️ No text to embed.")
             return
-
         chunks = self.text_splitter.split_text(text)
         print(f"✂️ Split text into {len(chunks)} chunks")
-
         metadata = {
             "document_id": document_id,
             "fund_id": fund_id,
             "source_type": "pdf_text"
         }
-
         for i, chunk in enumerate(chunks):
             meta = {**metadata, "chunk_index": i}
             await self.vector_store.add_document(content=chunk, metadata=meta)
@@ -178,9 +169,11 @@ class DocumentProcessor:
                 # === Deteksi berdasarkan konten kolom "Type" terlebih dahulu ===
                 if "type" in [c.lower() for c in df.columns]:
                     type_values = " ".join(str(v).lower() for v in df["Type"].dropna().unique())
-                    if "return" in type_values or "income" in type_values:
+                    if "recallable dist" in type_values:
+                        table_type = "adjustments"  # <-- Perbaikan: Tabel ini adalah Adjustments
+                    elif "return" in type_values or "income" in type_values:
                         table_type = "distributions"
-                    elif "recallable dist" in type_values or "capital call adj" in type_values:
+                    elif "capital call adj" in type_values or "contribution adjustment" in type_values:
                         table_type = "adjustments"
                     elif "call" in type_values:
                         table_type = "capital_calls"
@@ -197,7 +190,8 @@ class DocumentProcessor:
                     fallback_types = ["capital_calls", "distributions", "adjustments"]
                     if i < len(fallback_types):
                         table_type = fallback_types[i]
-                        print(f"🔁 Fallback: Assigning table {i} as '{table_type}'")
+                        print(f"🔍 Fallback: Assigning table {i} as '{table_type}'")
+
                 print(f"📄 Table {i}: detected type '{table_type}' with headers = {headers}")
                 tables.append({"type": table_type, "data": df.to_dict(orient="records")})
             except Exception as e:
@@ -234,7 +228,7 @@ class DocumentProcessor:
         return metadata
 
     # ----------------------------------------------------------------------
-    # 💾 SAVE TO DATABASE
+    # 💾 SAVE TO DATABASE — PERBAIKAN UTAMA DI SINI
     # ----------------------------------------------------------------------
     def _save_to_db(self, db: Session, document_id: int, meta: dict, tables: List[dict]):
         doc = db.query(DBDocument).filter(DBDocument.id == document_id).first()
@@ -294,30 +288,64 @@ class DocumentProcessor:
                         parsed_date = datetime.now().date()
                 except Exception:
                     parsed_date = datetime.now().date()
-                kwargs = {
-                    "document_id": document_id,
-                    "fund_id": fund_id,
-                    "amount": amount_val,
-                    "description": desc
-                }
-                if t_type == "capital_calls":
-                    kwargs["call_date"] = parsed_date
-                elif t_type == "distributions":
-                    kwargs["distribution_date"] = parsed_date
+
+                # --- PERBAIKAN UTAMA: Tangani Recallable Distribution di tabel Distributions ---
+                if t_type == "distributions":
+                    # Periksa kolom "Recallable" atau "Type" untuk menentukan is_recallable
+                    is_recallable_val = str(row.get("Recallable", "")).lower().strip()
+                    type_val = str(row.get("Type", "")).lower().strip()
+                    is_recallable_flag = (is_recallable_val == "yes" or is_recallable_val == "y" or is_recallable_val == "true" or "recallable" in type_val)
+
+                    kwargs = {
+                        "document_id": document_id,
+                        "fund_id": fund_id,
+                        "amount": amount_val,
+                        "description": desc,
+                        "distribution_date": parsed_date,
+                        "is_recallable": is_recallable_flag
+                    }
+                    db.add(model_class(**kwargs))
+                elif t_type == "capital_calls":
+                    kwargs = {
+                        "document_id": document_id,
+                        "fund_id": fund_id,
+                        "amount": amount_val,
+                        "description": desc,
+                        "call_date": parsed_date
+                    }
+                    db.add(model_class(**kwargs))
                 elif t_type == "adjustments":
-                    kwargs["adjustment_date"] = parsed_date
-                db.add(model_class(**kwargs))
+                    # Ambil adjustment_type dari kolom "Type" di baris
+                    adj_type = str(row.get("Type", "")).lower().strip()
+                    adj_type_mapped = "Other Adjustment" # Default
+                    if "recallable" in adj_type:
+                        adj_type_mapped = "Recallable Distribution"
+                    elif "capital call adj" in adj_type:
+                        adj_type_mapped = "Capital Call Adjustment"
+                    elif "contribution adj" in adj_type or "expense" in adj_type:
+                        adj_type_mapped = "Contribution Adjustment"
+                    # Tambahkan mapping lain jika perlu
+
+                    kwargs = {
+                        "document_id": document_id,
+                        "fund_id": fund_id,
+                        "amount": amount_val, # Simpan nilai asli (bisa positif atau negatif)
+                        "description": desc,
+                        "adjustment_date": parsed_date,
+                        "adjustment_type": adj_type_mapped
+                    }
+                    db.add(model_class(**kwargs))
             db.commit()
-            print(f"💾 Inserted {len(rows)} rows into '{t_type}'")
+            print(f"💾 Inserted rows into '{t_type}'")
         print(f"✅ All data committed for document ID {document_id}")
 
     # ----------------------------------------------------------------------
-    # 🔍 HELPER: Fund ID from path/filename
+    # 🔒 HELPER: Fund ID from path/filename — DIHAPUS LOGIKA OTOMATISNYA
     # ----------------------------------------------------------------------
     def _get_fund_id_from_path(self, db: Session, file_path: str) -> int:
-        # Placeholder: bisa diperluas untuk parsing path seperti /fund_1/report.pdf
+        # Tidak digunakan lagi — fund_id harus dikirim eksplisit
         return None
 
     def _get_fund_id_from_filename(self, db: Session, filename: str) -> int:
-        # Placeholder: bisa diperluas untuk parsing nama file seperti fund1_report.pdf
+        # Tidak digunakan lagi — fund_id harus dikirim eksplisit
         return None

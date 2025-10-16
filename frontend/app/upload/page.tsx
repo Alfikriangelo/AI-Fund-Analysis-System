@@ -1,9 +1,9 @@
 "use client";
-
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, CheckCircle, XCircle, Loader2 } from "lucide-react";
-import { documentApi, DocumentStatus } from "@/lib/api";
+import { documentApi, fundApi } from "@/lib/api";
+import Link from "next/link";
 
 export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
@@ -13,44 +13,61 @@ export default function UploadPage() {
     documentId?: number;
   }>({ status: "idle" });
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0) return;
+  // --- State untuk pemilihan fund ---
+  const [selectedFundId, setSelectedFundId] = useState<number | null>(null);
+  const [availableFunds, setAvailableFunds] = useState<any[]>([]);
+  const [loadingFunds, setLoadingFunds] = useState(true);
+  // ---
 
-    const file = acceptedFiles[0];
-
-    setUploading(true);
-    setUploadStatus({ status: "uploading", message: "Uploading file..." });
-
-    try {
-      const result = await documentApi.upload(file);
-
-      setUploadStatus({
-        status: "processing",
-        message: "File uploaded. Processing document...",
-        documentId: result.document_id,
-      });
-
-      // Poll for status
-      pollDocumentStatus(result.document_id);
-    } catch (error: any) {
-      setUploadStatus({
-        status: "error",
-        message: error.response?.data?.detail || "Upload failed",
-      });
-      setUploading(false);
-    }
+  // --- Fetch daftar fund saat halaman dimuat ---
+  useEffect(() => {
+    const fetchFunds = async () => {
+      try {
+        const funds = await fundApi.list();
+        setAvailableFunds(funds);
+      } catch (err) {
+        console.error("Failed to fetch funds:", err);
+      } finally {
+        setLoadingFunds(false);
+      }
+    };
+    fetchFunds();
   }, []);
+  // ---
+
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      if (acceptedFiles.length === 0 || !selectedFundId) return;
+      const file = acceptedFiles[0];
+      setUploading(true);
+      setUploadStatus({ status: "uploading", message: "Uploading file..." });
+      try {
+        // --- KIRIM FUND_ID ---
+        const result = await documentApi.upload(file, selectedFundId);
+        setUploadStatus({
+          status: "processing",
+          message: "File uploaded. Processing document...",
+          documentId: result.document_id,
+        });
+        pollDocumentStatus(result.document_id);
+      } catch (error: any) {
+        setUploadStatus({
+          status: "error",
+          message: error.response?.data?.detail || "Upload failed",
+        });
+        setUploading(false);
+      }
+    },
+    [selectedFundId]
+  ); // <-- dependency pada selectedFundId
 
   const pollDocumentStatus = async (documentId: number) => {
-    const maxAttempts = 60; // 5 minutes max
+    const maxAttempts = 60;
     let attempts = 0;
-
     const poll = async () => {
       try {
         const status = await documentApi.getStatus(documentId);
-        // --- PERUBAHAN DISINI ---
         if (status.status === "completed") {
-          // <-- Gunakan parsing_status
           setUploadStatus({
             status: "success",
             message: "Document processed successfully!",
@@ -58,10 +75,9 @@ export default function UploadPage() {
           });
           setUploading(false);
         } else if (status.status === "failed") {
-          // <-- Gunakan parsing_status
           setUploadStatus({
             status: "error",
-            message: status.error_message || "Processing failed", // <-- Gunakan error_message
+            message: status.error_message || "Processing failed",
             documentId,
           });
           setUploading(false);
@@ -85,7 +101,6 @@ export default function UploadPage() {
         setUploading(false);
       }
     };
-
     poll();
   };
 
@@ -95,7 +110,7 @@ export default function UploadPage() {
       "application/pdf": [".pdf"],
     },
     maxFiles: 1,
-    disabled: uploading,
+    disabled: uploading || !selectedFundId,
   });
 
   return (
@@ -106,6 +121,48 @@ export default function UploadPage() {
           Upload a PDF fund performance report to automatically extract and
           analyze data
         </p>
+
+        {/* --- Dropdown Fund Selection --- */}
+        <div className="mt-6">
+          <label
+            htmlFor="fund-select"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Select Fund:
+          </label>
+          {loadingFunds ? (
+            <p className="text-sm text-gray-500">Loading funds...</p>
+          ) : (
+            <>
+              <select
+                id="fund-select"
+                value={selectedFundId || ""}
+                onChange={(e) =>
+                  setSelectedFundId(
+                    e.target.value ? Number(e.target.value) : null
+                  )
+                }
+                className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+              >
+                <option value="">-- Select a Fund --</option>
+                {availableFunds.map((fund) => (
+                  <option key={fund.id} value={fund.id}>
+                    {fund.name}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-2">
+                <Link
+                  href="/funds/create"
+                  className="text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  + Create a new fund
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+        {/* --- Akhir Dropdown --- */}
       </div>
 
       {/* Upload Area */}
@@ -118,14 +175,12 @@ export default function UploadPage() {
               ? "border-blue-500 bg-blue-50"
               : "border-gray-300 hover:border-gray-400"
           }
-          ${uploading ? "opacity-50 cursor-not-allowed" : ""}
+          ${uploading || !selectedFundId ? "opacity-50 cursor-not-allowed" : ""}
         `}
       >
         <input {...getInputProps()} />
-
         <div className="flex flex-col items-center">
           <Upload className="w-16 h-16 text-gray-400 mb-4" />
-
           {isDragActive ? (
             <p className="text-lg text-blue-600 font-medium">
               Drop the file here...
@@ -133,7 +188,9 @@ export default function UploadPage() {
           ) : (
             <>
               <p className="text-lg font-medium mb-2">
-                Drag & drop a PDF file here, or click to select
+                {selectedFundId
+                  ? "Drag & drop a PDF file here, or click to select"
+                  : "Please select a fund first"}
               </p>
               <p className="text-sm text-gray-500">Maximum file size: 50MB</p>
             </>
@@ -174,7 +231,6 @@ export default function UploadPage() {
                   <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
                 )}
               </div>
-
               <div className="ml-4 flex-1">
                 <h3
                   className={`
@@ -194,7 +250,6 @@ export default function UploadPage() {
                   {uploadStatus.status === "success" && "Success!"}
                   {uploadStatus.status === "error" && "Error"}
                 </h3>
-
                 <p
                   className={`
                   mt-1 text-sm
@@ -210,7 +265,6 @@ export default function UploadPage() {
                 >
                   {uploadStatus.message}
                 </p>
-
                 {uploadStatus.status === "success" && (
                   <div className="mt-4 flex gap-3">
                     <a

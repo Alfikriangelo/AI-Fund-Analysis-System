@@ -1,7 +1,7 @@
 """
 Document API endpoints
 """
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from typing import List
 import os
@@ -24,11 +24,14 @@ router = APIRouter()
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    fund_id: int = None,
+    fund_id: str = Form(None),  
     db: Session = Depends(get_db)
 ):
-    """Upload and process a PDF document"""
+    print(f"🔍 DEBUG: Received fund_id = {fund_id}, type = {type(fund_id)}")
     
+    fund_id_int = int(fund_id) if fund_id is not None else None
+    print(f"✅ Converted fund_id_int = {fund_id_int}")
+
     # Validate file type
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
@@ -57,7 +60,7 @@ async def upload_document(
     
     # Create document record
     document = Document(
-        fund_id=fund_id,
+        fund_id=fund_id_int,
         file_name=file.filename,
         file_path=file_path,
         parsing_status="pending"
@@ -71,7 +74,7 @@ async def upload_document(
         process_document_task,
         document.id,
         file_path,
-        fund_id or 1  # Default fund_id if not provided
+        fund_id_int  
     )
     
     return DocumentUploadResponse(
@@ -85,25 +88,20 @@ async def upload_document(
 async def process_document_task(document_id: int, file_path: str, fund_id: int):
     """Background task to process document"""
     from app.db.session import SessionLocal
-    
     db = SessionLocal()
-    
     try:
         # Update status to processing
         document = db.query(Document).filter(Document.id == document_id).first()
         document.parsing_status = "processing"
         db.commit()
-        
-        # Process document
+        # Process document — fund_id dikirim langsung dari upload
         processor = DocumentProcessor()
         result = await processor.process_document(file_path, document_id, fund_id)
-        
         # Update status
         document.parsing_status = result["status"]
         if result["status"] == "failed":
             document.error_message = result.get("error")
         db.commit()
-        
     except Exception as e:
         document = db.query(Document).filter(Document.id == document_id).first()
         document.parsing_status = "failed"

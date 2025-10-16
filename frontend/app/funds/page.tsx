@@ -1,31 +1,37 @@
-'use client'
+"use client";
 
-import { useQuery } from '@tanstack/react-query'
-import Link from 'next/link'
-import { fundApi } from '@/lib/api'
-import { formatCurrency, formatPercentage } from '@/lib/utils'
-import { TrendingUp, TrendingDown, ArrowRight, Loader2 } from 'lucide-react'
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { fundApi } from "@/lib/api";
+import { formatCurrency, formatPercentage } from "@/lib/utils";
+import { TrendingUp, TrendingDown, ArrowRight, Loader2 } from "lucide-react";
 
 export default function FundsPage() {
-  const { data: funds, isLoading, error } = useQuery({
-    queryKey: ['funds'],
-    queryFn: () => fundApi.list()
-  })
+  const {
+    data: funds,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["funds"],
+    queryFn: () => fundApi.list(),
+  });
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
-    )
+    );
   }
 
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error loading funds: {(error as Error).message}</p>
+        <p className="text-red-800">
+          Error loading funds: {(error as Error).message}
+        </p>
       </div>
-    )
+    );
   }
 
   return (
@@ -38,7 +44,7 @@ export default function FundsPage() {
           </p>
         </div>
         <Link
-          href="/upload"
+          href="/funds/create"
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
         >
           Add New Fund
@@ -47,7 +53,9 @@ export default function FundsPage() {
 
       {funds && funds.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <p className="text-gray-600 mb-4">No funds found. Upload a fund document to get started.</p>
+          <p className="text-gray-600 mb-4">
+            No funds found. Upload a fund document to get started.
+          </p>
           <Link
             href="/upload"
             className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
@@ -63,13 +71,13 @@ export default function FundsPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function FundCard({ fund }: { fund: any }) {
-  const metrics = fund.metrics || {}
-  const dpi = metrics.dpi || 0
-  const irr = metrics.irr || 0
+  const metrics = fund.metrics || {};
+  const dpi = metrics.dpi || 0;
+  const irr = metrics.irr || 0;
 
   return (
     <Link href={`/funds/${fund.id}`}>
@@ -82,14 +90,16 @@ function FundCard({ fund }: { fund: any }) {
             <p className="text-sm text-gray-600">GP: {fund.gp_name}</p>
           )}
           {fund.vintage_year && (
-            <p className="text-sm text-gray-500">Vintage: {fund.vintage_year}</p>
+            <p className="text-sm text-gray-500">
+              Vintage: {fund.vintage_year}
+            </p>
           )}
         </div>
 
         <div className="space-y-3 mb-4">
           <MetricRow
             label="DPI"
-            value={dpi.toFixed(2) + 'x'}
+            value={dpi.toFixed(2) + "x"}
             positive={dpi >= 1}
           />
           <MetricRow
@@ -110,27 +120,30 @@ function FundCard({ fund }: { fund: any }) {
         </div>
       </div>
     </Link>
-  )
+  );
 }
 
-function MetricRow({ label, value, positive }: { 
-  label: string
-  value: string
-  positive?: boolean 
+function MetricRow({
+  label,
+  value,
+  positive,
+}: {
+  label: string;
+  value: string;
+  positive?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm text-gray-600">{label}</span>
       <div className="flex items-center space-x-1">
         <span className="font-semibold text-gray-900">{value}</span>
-        {positive !== undefined && (
-          positive ? (
+        {positive !== undefined &&
+          (positive ? (
             <TrendingUp className="w-4 h-4 text-green-600" />
           ) : (
             <TrendingDown className="w-4 h-4 text-red-600" />
-          )
-        )}
+          ))}
       </div>
     </div>
-  )
+  );
 }
