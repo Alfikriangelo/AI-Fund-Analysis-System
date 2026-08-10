@@ -1,4 +1,4 @@
-# Fund Performance Analysis System (InterOpera Coding Test 3rd)
+# Fund Performance Analysis System
 
 A comprehensive system for extracting, analyzing, and visualizing private equity fund performance from PDF reports.
 
