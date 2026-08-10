@@ -1,6 +1,6 @@
 # Fund Performance Analysis System (InterOpera Coding Test 3rd)
 
-A comprehensive system for extracting, analyzing, and visualizing private equity fund performance from PDF reports. This project fulfills the requirements for the [InterOpera Coding Test (https://github.com/InterOpera-Apps/coding-test-3rd).
+A comprehensive system for extracting, analyzing, and visualizing private equity fund performance from PDF reports.
 
 ## 📸 Screenshots
 Create new Fund
