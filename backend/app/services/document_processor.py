@@ -9,6 +9,7 @@ import re
 import traceback
 import os
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from docling.document_converter import DocumentConverter
 from docling_core.types import DoclingDocument
@@ -33,6 +34,17 @@ class DocumentProcessor:
             chunk_overlap=settings.CHUNK_OVERLAP,
             length_function=len,
         )
+        self.llm = None
+        if settings.GOOGLE_API_KEY:
+            try:
+                self.llm = ChatGoogleGenerativeAI(
+                    model=settings.GEMINI_MODEL,
+                    temperature=0,
+                    google_api_key=settings.GOOGLE_API_KEY,
+                    convert_system_message_to_human=True
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to initialize Gemini LLM for table parsing: {e}")
 
     async def process_document(self, file_path: str, document_id: int, fund_id: int) -> Dict[str, Any]:
         db = SessionLocal()
@@ -60,7 +72,7 @@ class DocumentProcessor:
                 doc_db.fund_id = fund_id
                 db.commit()
 
-            self._save_to_db(db, document_id, metadata, tables)
+            await self._save_to_db(db, document_id, metadata, tables)
 
             await self._save_text_to_vector_store(text, document_id, fund_id)
 
@@ -178,7 +190,7 @@ class DocumentProcessor:
             metadata["date"] = date_match.group(0)
         return metadata
 
-    def _save_to_db(self, db: Session, document_id: int, meta: dict, tables: List[dict]):
+    async def _save_to_db(self, db: Session, document_id: int, meta: dict, tables: List[dict]):
         doc = db.query(DBDocument).filter(DBDocument.id == document_id).first()
         if not doc:
             raise ValueError(f"Document ID {document_id} not found")
@@ -191,6 +203,138 @@ class DocumentProcessor:
                 setattr(doc, key, value)
         db.commit()
 
+        if self.llm:
+            print("🤖 Starting LLM-based structured table parsing...")
+            try:
+                for table in tables:
+                    t_type, rows = table["type"], table["data"]
+                    if t_type not in ["capital_calls", "distributions", "adjustments"]:
+                        continue
+
+                    # Extract structured transactions using Gemini
+                    structured_rows = await self._extract_transactions_with_llm(rows, t_type)
+                    print(f"✅ LLM parsed {len(structured_rows)} records for table type: {t_type}")
+
+                    for row in structured_rows:
+                        # Parse amount
+                        amount_val = 0.0
+                        try:
+                            amount_val = float(row.get("amount", 0.0))
+                        except Exception:
+                            amount_val = 0.0
+
+                        # Parse date
+                        try:
+                            parsed_date = datetime.strptime(str(row.get("date", "")).strip(), "%Y-%m-%d").date()
+                        except Exception:
+                            parsed_date = datetime.now().date()
+
+                        desc = str(row.get("description", ""))[:500]
+
+                        if t_type == "distributions":
+                            kwargs = {
+                                "document_id": document_id,
+                                "fund_id": fund_id,
+                                "amount": amount_val,
+                                "description": desc,
+                                "distribution_date": parsed_date,
+                                "is_recallable": bool(row.get("is_recallable", False))
+                            }
+                            db.add(Distribution(**kwargs))
+                        elif t_type == "capital_calls":
+                            kwargs = {
+                                "document_id": document_id,
+                                "fund_id": fund_id,
+                                "amount": amount_val,
+                                "description": desc,
+                                "call_date": parsed_date
+                            }
+                            db.add(CapitalCall(**kwargs))
+                        elif t_type == "adjustments":
+                            kwargs = {
+                                "document_id": document_id,
+                                "fund_id": fund_id,
+                                "amount": amount_val,
+                                "description": desc,
+                                "adjustment_date": parsed_date,
+                                "adjustment_type": str(row.get("adjustment_type", "Other Adjustment"))
+                            }
+                            db.add(Adjustment(**kwargs))
+                db.commit()
+                return
+            except Exception as e:
+                db.rollback()
+                print(f"⚠️ LLM parsing failed or timed out: {e}. Falling back to Rule-Based parsing.")
+        
+        # Fallback to standard rule-based parsing
+        self._save_to_db_rule_based(db, document_id, fund_id, tables)
+
+    async def _extract_transactions_with_llm(self, table_rows: List[dict], table_type: str) -> List[dict]:
+        """
+        Use Google Gemini to parse raw table rows into a structured JSON list of transactions.
+        """
+        if not self.llm:
+            raise ValueError("LLM is not initialized")
+
+        import json
+
+        if table_type == "capital_calls":
+            schema_instruction = """
+Each item in the returned JSON list MUST contain:
+- "date": string in YYYY-MM-DD format (convert column dates like 'Jan 15, 2023', '2023/06/20', or '20-Jun-23' to standard ISO format)
+- "amount": float/number (extract and clean the monetary amount, remove currency symbols like $, Rp, commas, and handle parentheses like (3,000) or negative numbers properly)
+- "description": string (brief description or type of call, default to empty string if missing)
+"""
+        elif table_type == "distributions":
+            schema_instruction = """
+Each item in the returned JSON list MUST contain:
+- "date": string in YYYY-MM-DD format
+- "amount": float/number (extract and clean the monetary amount)
+- "description": string (brief description, default to empty string if missing)
+- "is_recallable": boolean (true if the description, type, or another column indicates it is a 'Recallable Distribution' or has 'yes'/'y'/'true' in a recallable column, otherwise false)
+"""
+        elif table_type == "adjustments":
+            schema_instruction = """
+Each item in the returned JSON list MUST contain:
+- "date": string in YYYY-MM-DD format
+- "amount": float/number (extract and clean the monetary amount)
+- "description": string (brief description)
+- "adjustment_type": string (mapped to one of: 'Recallable Distribution', 'Capital Call Adjustment', 'Contribution Adjustment', or 'Other Adjustment')
+"""
+        else:
+            return []
+
+        prompt = f"""You are a financial data engineering assistant. Your job is to extract structured financial transactions from a raw parsed PDF table.
+
+Input Raw Table Data (JSON rows format):
+{json.dumps(table_rows, indent=2)}
+
+Table Type to extract: {table_type}
+
+Extraction Instructions:
+1. Parse the raw input table and map the rows to the target transaction schema.
+2. {schema_instruction}
+3. Clean and standardize all numeric amounts (convert to float/numbers) and dates (convert to YYYY-MM-DD). If a date is completely missing or invalid, default to today's date: {datetime.now().strftime("%Y-%m-%d")}.
+4. Return ONLY a valid JSON list of objects conforming to the schema above. Do NOT include any markdown code blocks (like ```json), explanations, or trailing text. Return the raw JSON list directly.
+"""
+
+        response = await self.llm.ainvoke(prompt)
+        content = response.content.strip()
+
+        # Clean markdown code blocks if the LLM included them
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\n", "", content)
+            content = re.sub(r"\n```$", "", content)
+            content = content.strip()
+
+        parsed = json.loads(content)
+        if isinstance(parsed, list):
+            return parsed
+        else:
+            raise ValueError("LLM did not return a JSON list")
+
+    def _save_to_db_rule_based(self, db: Session, document_id: int, fund_id: int, tables: List[dict]):
+        print("⚙️ Running Rule-Based table parsing fallback...")
         for table in tables:
             t_type, rows = table["type"], table["data"]
             model_class = {
@@ -274,7 +418,6 @@ class DocumentProcessor:
                     }
                     db.add(model_class(**kwargs))
             db.commit()
-
 
     def _get_fund_id_from_path(self, db: Session, file_path: str) -> int:
         return None

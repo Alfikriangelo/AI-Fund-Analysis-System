@@ -190,16 +190,20 @@ class VectorStore:
                 LIMIT {k}
             """
 
+            import math
             result = self.db.execute(text(search_sql))
             results = []
             for row in result:
+                score_val = float(row[5]) if row[5] is not None else 0.0
+                if math.isnan(score_val) or math.isinf(score_val):
+                    score_val = 0.0
                 results.append({
                     "id": row[0],
                     "document_id": row[1],
                     "fund_id": row[2],
                     "content": row[3],
                     "metadata": row[4],
-                    "score": float(row[5])
+                    "score": score_val
                 })
 
             return results

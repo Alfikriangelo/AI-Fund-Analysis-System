@@ -234,7 +234,7 @@ function MessageBubble({ message }: { message: Message }) {
             isUser ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-900"
           }`}
         >
-          <div className="prose prose-sm max-w-none">
+          <div className={`prose prose-sm max-w-none ${isUser ? "prose-invert" : ""}`}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>

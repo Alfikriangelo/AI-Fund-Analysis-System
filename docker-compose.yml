@@ -3,11 +3,11 @@ services:
     image: pgvector/pgvector:pg15
     container_name: fund-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: lakuna1911
-      POSTGRES_DB: interopera_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lakuna1911}
+      POSTGRES_DB: ${POSTGRES_DB:-interopera_db}
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/init_pgvector/init_pgvector.sql:/docker-entrypoint-initdb.d/init_pgvector.sql
@@ -40,7 +40,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      DATABASE_URL: postgresql://postgres:lakuna1911@postgres:5432/interopera_db
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-lakuna1911}@postgres:5432/${POSTGRES_DB:-interopera_db}
       REDIS_URL: redis://redis:6379/0
       UPLOAD_DIR: /app/uploads
     volumes:

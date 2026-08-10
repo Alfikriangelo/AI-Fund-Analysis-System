@@ -88,7 +88,7 @@ fund-analysis-system/
 
 ### Backend
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+)
-- **Document Parsing**: [Docling 2.55.1](https://ds4sd.github.io/docling/)
+- **Document Ingestion**: Hybrid pipeline combining [Docling 2.55.1](https://ds4sd.github.io/docling/) for raw table extraction and **Google Gemini LLM** for intelligent structured data extraction (automatic date formatting & amount cleaning). Automatically falls back to a rule-based parser if API keys are missing.
 - **Database**: PostgreSQL 15+ with [pgvector](https://github.com/pgvector/pgvector) extension
 - **ORM**: SQLAlchemy
 - **Task Queue**: Built-in `BackgroundTasks` (for simplicity, can be upgraded to Celery)
@@ -220,6 +220,7 @@ The backend exposes a set of RESTful API endpoints for interacting with the syst
 ### Database (`postgres/`)
 
 *   **System**: PostgreSQL 15+ with [pgvector](https://github.com/pgvector/pgvector) extension.
+*   **Port Mapping**: Exposed on port **`5434`** on the host machine to prevent port conflicts with local Windows PostgreSQL instances (e.g., ports 5432 or 5433).
 *   **ORM**: SQLAlchemy
 *   **Purpose**: Stores structured data including Funds, Documents, Transactions (Capital Calls, Distributions, Adjustments).
 *   **Vector Store**: Used by the chat feature to store document chunks and their embeddings for Retrieval-Augmented Generation (RAG).
@@ -280,7 +281,14 @@ These instructions will get you a copy of the project up and running on your loc
     *   **Frontend/UI:** Open your browser and go to `http://localhost:3000`.
     *   **Backend/API Docs:** Access the interactive API documentation at `http://localhost:8000/docs`.
 
-5.  **Stopping the Application:**
+5.  **Connecting pgAdmin / Database Explorer:**
+    *   **Host**: `localhost`
+    *   **Port**: `5434`
+    *   **Maintenance Database**: `interopera_db`
+    *   **Username**: `postgres`
+    *   **Password**: `<your_postgres_password>` (configured in `.env` / `docker-compose.yml`)
+
+6.  **Stopping the Application:**
     To stop all services, press `Ctrl+C` in the terminal where `docker-compose up` is running. To remove the stopped containers, run:
     ```bash
     docker-compose down
